@@ -1,10 +1,15 @@
 package com.einherji.rs2world.net.clients;
 
+import com.einherji.rs2world.net.packets.Packet;
+import com.einherji.rs2world.net.util.Rs2WriteBuffer;
 import com.einherji.rs2world.util.Timer;
 
-import java.nio.ByteBuffer;
+import java.io.IOException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 public class Client {
@@ -12,20 +17,37 @@ public class Client {
     private final UUID uuid;
     private final SocketChannel channel;
     private final SelectionKey selectionKey;
-    private final ByteBuffer outBuffer;
+    private final Rs2WriteBuffer outBuffer;
     private final Timer timeoutTimer = new Timer();
+    private final List<Packet> packetQueue = new ArrayList<>();
 
-    private ClientState state;
+    private ClientStatus status;
 
     public Client(UUID uuid,
                   SocketChannel channel,
                   SelectionKey selectionKey,
-                  ByteBuffer outBuffer) {
+                  Rs2WriteBuffer outBuffer) {
         this.uuid = uuid;
         this.channel = channel;
         this.selectionKey = selectionKey;
         this.outBuffer = outBuffer;
-        this.state = ClientState.CONNECTING;
+        this.status = ClientStatus.CONNECTED;
+    }
+
+    public void queuePacket(Packet packet) {
+        Objects.requireNonNull(packet);
+        synchronized (packetQueue) {
+            packetQueue.add(packet);
+        }
+    }
+
+    public void flushOutBuffer() {
+        try {
+            outBuffer.getBuffer().flip();
+            channel.write(outBuffer.getBuffer());
+        } catch(IOException ioe) {
+
+        }
     }
 
     public UUID getUuid() {
@@ -40,12 +62,16 @@ public class Client {
         return selectionKey;
     }
 
-    public ByteBuffer getOutBuffer() {
+    public Rs2WriteBuffer getOutBuffer() {
         return outBuffer;
     }
 
-    public ClientState getState() {
-        return state;
+    public ClientStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(ClientStatus status) {
+        this.status = status;
     }
 
     public Timer getTimeoutTimer() {

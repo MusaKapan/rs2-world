@@ -2,6 +2,7 @@ package com.einherji.rs2world.util;
 
 import java.util.Objects;
 
+//TODO: contract interface
 public class ArrayWrapper<E> {
 
     private final E[] elements;

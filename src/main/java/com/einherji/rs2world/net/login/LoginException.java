@@ -2,14 +2,14 @@ package com.einherji.rs2world.net.login;
 
 public class LoginException extends RuntimeException {
 
-    private final int responseCode;
+    private final byte responseCode;
 
-    public LoginException(int responseCode) {
+    public LoginException(byte responseCode) {
         super("Encountered login exception with code: " + responseCode);
         this.responseCode = responseCode;
     }
 
-    public int getResponseCode() {
+    public byte getResponseCode() {
         return responseCode;
     }
 }

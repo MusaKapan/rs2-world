@@ -2,9 +2,13 @@ package com.einherji.rs2world.net;
 
 import com.einherji.rs2world.net.clients.Client;
 import com.einherji.rs2world.net.clients.ClientService;
+import com.einherji.rs2world.net.gateway.Gateway;
 import com.einherji.rs2world.net.login.LoginException;
 import com.einherji.rs2world.net.login.LoginResponseCodes;
-import com.einherji.rs2world.net.login.LoginService;
+import com.einherji.rs2world.net.packets.Packet;
+import com.einherji.rs2world.net.packets.PacketDecoder;
+import com.einherji.rs2world.net.util.Rs2Buffer;
+import com.einherji.rs2world.net.util.Rs2ReadBuffer;
 import com.einherji.rs2world.util.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,16 +40,18 @@ public final class Server implements Runnable {
     private final ServerSocketChannel serverSocketChannel;
     private final Selector selector;
     private final ExecutorService workers;
-    private final ThreadLocal<ByteBuffer> workerBuffers;
+    private final ThreadLocal<Rs2Buffer> workerBuffers;
     private final ClientService clientService;
-    private final LoginService loginService;
+    private final Gateway gateway;
+    private final PacketDecoder packetDecoder;
     private final Timer acceptTimer = new Timer();
 
-    public Server(ClientService clientService, LoginService loginService) {
+    public Server(ClientService clientService, Gateway gateway, PacketDecoder packetDecoder) {
         this.clientService = clientService;
-        this.loginService = loginService;
+        this.gateway = gateway;
+        this.packetDecoder = packetDecoder;
         workers = Executors.newFixedThreadPool(WORKERS);
-        workerBuffers = ThreadLocal.withInitial(() -> ByteBuffer.allocateDirect(BUFFER_SIZE));
+        workerBuffers = ThreadLocal.withInitial(() -> Rs2Buffer.createReadBuffer(ByteBuffer.allocateDirect(BUFFER_SIZE)));
         try {
             selector = Selector.open();
             serverSocketChannel = ServerSocketChannel.open();
@@ -69,7 +75,7 @@ public final class Server implements Runnable {
                     workers.submit(this::acceptConnections);
                 }
                 if (key.isReadable()) {
-                    //workers.submit(() -> read(key));
+                    workers.submit(() -> read(key));
                 }
                 keys.remove();
             }
@@ -78,26 +84,27 @@ public final class Server implements Runnable {
         }
     }
 
+    //TODO: host validation: needs to happen after the gateway
     private void acceptConnections() {
-        ByteBuffer threadBuffer = workerBuffers.get();
+        ByteBuffer threadBuffer = workerBuffers.get().getBuffer();
         boolean worldFull = false;
         for (int i = 0; i < ACCEPT_ATTEMPTS; i++) {
             SocketChannel channel = null;
             try {
                 channel = serverSocketChannel.accept();
                 if (channel == null) return;
+                channel.configureBlocking(false);
 
                 if (worldFull) {
                     handleException(channel, threadBuffer, LoginResponseCodes.WORLD_FULL);
                     continue;
                 }
 
-                channel.configureBlocking(false);
                 UUID uuid = UUID.randomUUID();
                 SelectionKey key = channel.register(selector, SelectionKey.OP_READ, uuid);
 
                 Client client = clientService.create(key, channel, uuid);
-                loginService.add(client);
+                gateway.addToLoginQueue(client);
             } catch (IOException ioe) {
                 LOGGER.error("Encountered error during accept cycle: ", ioe);
             } catch(LoginException le) {
@@ -108,11 +115,37 @@ public final class Server implements Runnable {
         }
     }
 
-    private void handleException(SocketChannel channel, ByteBuffer buffer, int responseCode) {
+    private void read(SelectionKey key) {
+        Rs2Buffer buffer = workerBuffers.get();
+        Client client = clientService.get((UUID) key.attachment());
+        if (client == null) {
+            key.cancel();
+            return;
+        }
+        try {
+            buffer.getBuffer().clear();
+            int bytesRead = client.getChannel().read(buffer.getBuffer());
+            if (bytesRead == -1) {
+                //TODO: properly terminate client
+                client.getSelectionKey().cancel();
+                return;
+            }
+        } catch(IOException ioe) {
+            LOGGER.error("Encountered error during read operation: ", ioe);
+        }
+        client.getTimeoutTimer().reset();
+        buffer.getBuffer().flip();
+        Packet packet;
+        while ((packet = packetDecoder.decode(client.getStatus(), (Rs2ReadBuffer) buffer)) != null) {
+            client.queuePacket(packet);
+        }
+    }
+
+    private void handleException(SocketChannel channel, ByteBuffer buffer, byte responseCode) {
         if (channel == null) return;
         try {
             buffer.clear();
-            buffer.put((byte) responseCode);
+            buffer.put(responseCode);
             buffer.flip();
             channel.write(buffer);
             channel.close();

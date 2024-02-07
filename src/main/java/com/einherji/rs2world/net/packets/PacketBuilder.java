@@ -1,9 +1,9 @@
 package com.einherji.rs2world.net.packets;
 
-import java.nio.ByteBuffer;
+import com.einherji.rs2world.net.util.Rs2ReadBuffer;
 
 public interface PacketBuilder {
 
-    Packet build(ByteBuffer buffer);
+    Packet build(Rs2ReadBuffer buffer);
 
 }

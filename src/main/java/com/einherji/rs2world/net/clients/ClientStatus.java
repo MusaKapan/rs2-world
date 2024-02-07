@@ -1,8 +1,8 @@
 package com.einherji.rs2world.net.clients;
 
-public enum ClientState {
+public enum ClientStatus {
 
-    CONNECTING,
+    CONNECTED,
     LOGGING_IN,
     LOGGED_IN
 
