@@ -27,8 +27,8 @@ public class ConnectionPacketBuilder implements PacketBuilder {
             client.getOutBuffer().writeLong(0L);
             client.getOutBuffer().writeByte(0);
             client.getOutBuffer().writeLong(ctx.generateServerSessionKey());
-            client.setStatus(ClientStatus.LOGGING_IN);
             client.flushOutBuffer();
+            client.setStatus(ClientStatus.LOGGING_IN);
         }
     }
 }

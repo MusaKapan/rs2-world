@@ -2,7 +2,6 @@ package com.einherji.rs2world.net;
 
 import com.einherji.rs2world.net.clients.Client;
 import com.einherji.rs2world.net.clients.ClientService;
-import com.einherji.rs2world.net.gateway.Gateway;
 import com.einherji.rs2world.net.login.LoginException;
 import com.einherji.rs2world.net.login.LoginResponseCodes;
 import com.einherji.rs2world.net.packets.Packet;
@@ -42,13 +41,11 @@ public final class Server implements Runnable {
     private final ExecutorService workers;
     private final ThreadLocal<Rs2Buffer> workerBuffers;
     private final ClientService clientService;
-    private final Gateway gateway;
     private final PacketDecoder packetDecoder;
     private final Timer acceptTimer = new Timer();
 
-    public Server(ClientService clientService, Gateway gateway, PacketDecoder packetDecoder) {
+    public Server(ClientService clientService, PacketDecoder packetDecoder) {
         this.clientService = clientService;
-        this.gateway = gateway;
         this.packetDecoder = packetDecoder;
         workers = Executors.newFixedThreadPool(WORKERS);
         workerBuffers = ThreadLocal.withInitial(() -> Rs2Buffer.createReadBuffer(ByteBuffer.allocateDirect(BUFFER_SIZE)));
@@ -102,9 +99,7 @@ public final class Server implements Runnable {
 
                 UUID uuid = UUID.randomUUID();
                 SelectionKey key = channel.register(selector, SelectionKey.OP_READ, uuid);
-
-                Client client = clientService.create(key, channel, uuid);
-                gateway.addToLoginQueue(client);
+                clientService.create(key, channel, uuid);
             } catch (IOException ioe) {
                 LOGGER.error("Encountered error during accept cycle: ", ioe);
             } catch(LoginException le) {
@@ -116,7 +111,7 @@ public final class Server implements Runnable {
     }
 
     private void read(SelectionKey key) {
-        Rs2Buffer buffer = workerBuffers.get();
+        Rs2ReadBuffer buffer = (Rs2ReadBuffer) workerBuffers.get();
         Client client = clientService.get((UUID) key.attachment());
         if (client == null) {
             key.cancel();
@@ -136,7 +131,7 @@ public final class Server implements Runnable {
         client.getTimeoutTimer().reset();
         buffer.getBuffer().flip();
         Packet packet;
-        while ((packet = packetDecoder.decode(client.getStatus(), (Rs2ReadBuffer) buffer)) != null) {
+        while ((packet = packetDecoder.decode(client.getStatus(), buffer)) != null) {
             client.queuePacket(packet);
         }
     }

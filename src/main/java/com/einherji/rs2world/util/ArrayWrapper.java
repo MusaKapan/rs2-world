@@ -1,6 +1,7 @@
 package com.einherji.rs2world.util;
 
 import java.util.Objects;
+import java.util.function.Consumer;
 
 //TODO: contract interface
 public class ArrayWrapper<E> {
@@ -31,5 +32,10 @@ public class ArrayWrapper<E> {
             for (int i = 0; i < elements.length; i++) if (elements[i] == null) return i;
         }
         return -1;
+    }
+
+    public void forEach(Consumer<E> consumer) {
+        Objects.requireNonNull(consumer);
+        for (E e : elements) if (e != null) consumer.accept(e);
     }
 }

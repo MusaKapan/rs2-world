@@ -1,6 +1,7 @@
 package com.einherji.rs2world.net.clients;
 
 import com.einherji.rs2world.net.packets.Packet;
+import com.einherji.rs2world.net.packets.PacketContext;
 import com.einherji.rs2world.net.util.Rs2WriteBuffer;
 import com.einherji.rs2world.util.Timer;
 
@@ -38,6 +39,13 @@ public class Client {
         Objects.requireNonNull(packet);
         synchronized (packetQueue) {
             packetQueue.add(packet);
+        }
+    }
+
+    public void triggerQueuedPackets(PacketContext ctx) {
+        synchronized (packetQueue) {
+            packetQueue.forEach(packet -> packet.execute(this, ctx));
+            packetQueue.clear();
         }
     }
 
